@@ -105,6 +105,28 @@
             border-top: 1px solid var(--border);
             padding-top: 15px;
         }
+        .tabs {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            background-color: var(--border);
+            margin-right: 5px;
+            border-radius: var(--button-radius);
+            cursor: pointer;
+        }
+        .tab.active {
+            background-color: var(--accent);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
         .letter-fields {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -123,6 +145,22 @@
             min-height: auto;
             padding: 8px;
         }
+        .system-settings {
+            margin-bottom: 15px;
+        }
+        .system-settings label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        .system-settings select {
+            width: 100%;
+            padding: 8px;
+            border-radius: var(--button-radius);
+            border: 1px solid var(--border);
+            background-color: var(--card);
+            color: var(--text);
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 </head>
@@ -133,24 +171,52 @@
         <button class="menu-button" onclick="toggleCipherMenu()">Cipher Settings</button>
 
         <div id="cipherMenu" class="cipher-menu">
-            <h3>Customize Cipher Key</h3>
-            <div class="letter-fields" id="letterFields"></div>
-            <button onclick="saveCipher()">Save Cipher Key</button>
+            <div class="tabs">
+                <div class="tab active" onclick="openTab('decimal')">Decimal</div>
+                <div class="tab" onclick="openTab('binary')">Binary</div>
+                <div class="tab" onclick="openTab('custom')">Custom</div>
+            </div>
+
+            <div id="decimal" class="tab-content active">
+                <div class="system-settings">
+                    <label for="decimalSystem">Decimal System:</label>
+                    <select id="decimalSystem" onchange="setDecimalSystem()">
+                        <option value="1-26">A=1, B=2, ..., Z=26</option>
+                        <option value="custom">Custom Decimal</option>
+                    </select>
+                </div>
+                <div class="letter-fields" id="decimalFields"></div>
+            </div>
+
+            <div id="binary" class="tab-content">
+                <div class="system-settings">
+                    <label for="binaryBits">Binary Bits:</label>
+                    <select id="binaryBits" onchange="setBinaryBits()">
+                        <option value="5">5 bits</option>
+                        <option value="6">6 bits</option>
+                        <option value="7">7 bits</option>
+                        <option value="8">8 bits</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="custom" class="tab-content">
+                <div class="letter-fields" id="customFields"></div>
+            </div>
+
+            <button onclick="saveCipher()">Save Cipher</button>
             <button onclick="resetToDefault()">Reset to Default</button>
             <div id="cipherError" class="error"></div>
         </div>
 
-        <h3>Encode/Decode</h3>
-        <textarea id="inputText" placeholder="Enter text to encode/decode"></textarea>
+        <h3>Input</h3>
+        <textarea id="inputText" placeholder="Type here for real-time encoding/decoding" oninput="updateOutput()"></textarea>
         <div class="button-group">
             <button onclick="pasteInput()">Paste</button>
-            <button onclick="encode()">Encode</button>
-            <button onclick="decode()">Decode</button>
-        </div>
-        <div class="button-group">
             <button onclick="copyToClipboard()">Copy Result</button>
             <button onclick="shareResult()">Share</button>
         </div>
+        <h3>Output</h3>
         <textarea id="outputText" placeholder="Result will appear here" readonly></textarea>
         <div id="outputError" class="error"></div>
 
@@ -161,21 +227,15 @@
     <script>
         let cipher = {};
         let history = JSON.parse(localStorage.getItem('cipherHistory')) || [];
+        let currentSystem = 'decimal';
+        let binaryBits = 5;
 
-        // Initialize letter fields
-        function initLetterFields() {
-            const container = document.getElementById('letterFields');
-            container.innerHTML = '';
-            for (let i = 1; i <= 26; i++) {
-                const letter = String.fromCharCode(64 + i);
-                const div = document.createElement('div');
-                div.className = 'letter-field';
-                div.innerHTML = `
-                    <label>${letter}</label>
-                    <input type="number" id="input-${letter}" value="${cipher[letter] || i}" min="1">
-                `;
-                container.appendChild(div);
-            }
+        // Initialize app
+        function initApp() {
+            loadCipher();
+            initDecimalFields();
+            initCustomFields();
+            updateOutput();
         }
 
         // Load cipher from localStorage
@@ -183,8 +243,12 @@
             const saved = localStorage.getItem('cipherKey');
             if (saved) {
                 try {
-                    const savedCipher = JSON.parse(saved);
-                    cipher = savedCipher;
+                    const savedData = JSON.parse(saved);
+                    cipher = savedData.cipher;
+                    currentSystem = savedData.system || 'decimal';
+                    binaryBits = savedData.binaryBits || 5;
+                    document.getElementById('decimalSystem').value = savedData.decimalSystem || '1-26';
+                    document.getElementById('binaryBits').value = binaryBits;
                 } catch (e) {
                     document.getElementById('cipherError').textContent = 'Error loading cipher. Using default.';
                     initDefaultCipher();
@@ -192,7 +256,6 @@
             } else {
                 initDefaultCipher();
             }
-            initLetterFields();
             renderHistory();
         }
 
@@ -202,8 +265,42 @@
             for (let i = 1; i <= 26; i++) {
                 cipher[String.fromCharCode(64 + i)] = i;
             }
-            localStorage.setItem('cipherKey', JSON.stringify(cipher));
+            currentSystem = 'decimal';
+            binaryBits = 5;
+            localStorage.setItem('cipherKey', JSON.stringify({cipher, system: currentSystem, binaryBits}));
             document.getElementById('cipherError').textContent = '';
+        }
+
+        // Initialize decimal fields
+        function initDecimalFields() {
+            const container = document.getElementById('decimalFields');
+            container.innerHTML = '';
+            for (let i = 1; i <= 26; i++) {
+                const letter = String.fromCharCode(64 + i);
+                const div = document.createElement('div');
+                div.className = 'letter-field';
+                div.innerHTML = `
+                    <label>${letter}</label>
+                    <input type="number" id="decimal-${letter}" value="${cipher[letter] || i}" min="1">
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        // Initialize custom fields
+        function initCustomFields() {
+            const container = document.getElementById('customFields');
+            container.innerHTML = '';
+            for (let i = 1; i <= 26; i++) {
+                const letter = String.fromCharCode(64 + i);
+                const div = document.createElement('div');
+                div.className = 'letter-field';
+                div.innerHTML = `
+                    <label>${letter}</label>
+                    <input type="text" id="custom-${letter}" value="${cipher[letter] || String.fromCharCode(64 + i)}">
+                `;
+                container.appendChild(div);
+            }
         }
 
         // Toggle cipher menu
@@ -212,20 +309,56 @@
             menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
         }
 
-        // Save custom cipher to localStorage
-        function saveCipher() {
-            try {
+        // Open tab
+        function openTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        // Set decimal system
+        function setDecimalSystem() {
+            const system = document.getElementById('decimalSystem').value;
+            if (system === '1-26') {
                 for (let i = 1; i <= 26; i++) {
                     const letter = String.fromCharCode(64 + i);
-                    const value = document.getElementById(`input-${letter}`).value;
-                    if (!value || isNaN(value)) {
-                        throw new Error(`Invalid value for ${letter}.`);
-                    }
-                    cipher[letter] = parseInt(value);
+                    document.getElementById(`decimal-${letter}`).value = i;
                 }
-                localStorage.setItem('cipherKey', JSON.stringify(cipher));
+            }
+        }
+
+        // Set binary bits
+        function setBinaryBits() {
+            binaryBits = parseInt(document.getElementById('binaryBits').value);
+        }
+
+        // Save cipher
+        function saveCipher() {
+            try {
+                if (currentSystem === 'decimal') {
+                    for (let i = 1; i <= 26; i++) {
+                        const letter = String.fromCharCode(64 + i);
+                        const value = document.getElementById(`decimal-${letter}`).value;
+                        if (!value || isNaN(value)) {
+                            throw new Error(`Invalid value for ${letter}.`);
+                        }
+                        cipher[letter] = parseInt(value);
+                    }
+                } else if (currentSystem === 'custom') {
+                    for (let i = 1; i <= 26; i++) {
+                        const letter = String.fromCharCode(64 + i);
+                        const value = document.getElementById(`custom-${letter}`).value;
+                        if (!value) {
+                            throw new Error(`Invalid value for ${letter}.`);
+                        }
+                        cipher[letter] = value;
+                    }
+                }
+                localStorage.setItem('cipherKey', JSON.stringify({cipher, system: currentSystem, binaryBits}));
                 document.getElementById('cipherError').textContent = '';
                 alert('Cipher saved!');
+                updateOutput();
             } catch (e) {
                 document.getElementById('cipherError').textContent = e.message;
             }
@@ -234,51 +367,50 @@
         // Reset to default cipher
         function resetToDefault() {
             initDefaultCipher();
-            initLetterFields();
+            initDecimalFields();
+            initCustomFields();
+            document.getElementById('decimalSystem').value = '1-26';
+            document.getElementById('binaryBits').value = '5';
             alert('Cipher reset to default!');
+            updateOutput();
         }
 
-        // Encode: Letter -> Number -> Binary
-        function encode() {
+        // Update output in real-time
+        function updateOutput() {
             const input = document.getElementById('inputText').value.toUpperCase();
             let output = '';
             try {
-                for (const char of input) {
-                    if (cipher[char]) {
-                        const num = cipher[char];
-                        const binary = num.toString(2).padStart(5, '0');
-                        output += `${binary} `;
-                    } else if (char !== ' ') {
-                        throw new Error(`Letter '${char}' not in cipher.`);
+                if (currentSystem === 'binary') {
+                    // Decode binary to letters
+                    const binaries = input.split(' ');
+                    for (const bin of binaries) {
+                        if (bin) {
+                            if (!/^[01]+$/.test(bin)) {
+                                throw new Error(`Invalid binary: '${bin}'.`);
+                            }
+                            const num = parseInt(bin, 2);
+                            const letter = Object.keys(cipher).find(k => cipher[k] == num);
+                            output += letter || '?';
+                        }
+                    }
+                } else {
+                    // Encode letters to binary/decimal
+                    for (const char of input) {
+                        if (cipher[char] !== undefined) {
+                            const value = cipher[char];
+                            if (currentSystem === 'binary') {
+                                const binary = value.toString(2).padStart(binaryBits, '0');
+                                output += `${binary} `;
+                            } else {
+                                output += `${value} `;
+                            }
+                        } else if (char !== ' ') {
+                            throw new Error(`Character '${char}' not in cipher.`);
+                        }
                     }
                 }
                 document.getElementById('outputText').value = output.trim();
                 document.getElementById('outputError').textContent = '';
-                addToHistory(`Encode: ${input} → ${output.trim()}`);
-            } catch (e) {
-                document.getElementById('outputError').textContent = e.message;
-            }
-        }
-
-        // Decode: Binary -> Number -> Letter
-        function decode() {
-            const input = document.getElementById('inputText').value;
-            const binaries = input.split(' ');
-            let output = '';
-            try {
-                for (const bin of binaries) {
-                    if (bin) {
-                        if (!/^[01]+$/.test(bin)) {
-                            throw new Error(`Invalid binary: '${bin}'.`);
-                        }
-                        const num = parseInt(bin, 2);
-                        const letter = Object.keys(cipher).find(k => cipher[k] === num);
-                        output += letter || '?';
-                    }
-                }
-                document.getElementById('outputText').value = output;
-                document.getElementById('outputError').textContent = '';
-                addToHistory(`Decode: ${input} → ${output}`);
             } catch (e) {
                 document.getElementById('outputError').textContent = e.message;
             }
@@ -297,6 +429,7 @@
             navigator.clipboard.readText()
                 .then(text => {
                     document.getElementById('inputText').value = text;
+                    updateOutput();
                 })
                 .catch(err => {
                     document.getElementById('outputError').textContent = 'Failed to paste.';
@@ -342,8 +475,8 @@
             });
         }
 
-        // Initialize
-        loadCipher();
+        // Initialize app
+        initApp();
     </script>
 </body>
 </html>
