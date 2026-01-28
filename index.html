@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cipher App</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --card: #1e1e1e;
+            --text: #ffffff;
+            --accent: #3F51B5;
+            --border: #333;
+            --button-radius: 4px;
+        }
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            background-color: var(--card);
+            border-radius: 8px;
+            padding: 20px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+        }
+        h1, h3 {
+            color: var(--text);
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        textarea, input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: var(--button-radius);
+            border: 1px solid var(--border);
+            background-color: var(--card);
+            color: var(--text);
+            font-size: 16px;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 80px;
+        }
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: var(--button-radius);
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+            font-family: 'Roboto', sans-serif;
+        }
+        button:hover {
+            background-color: #303F9F;
+        }
+        button:active {
+            background-color: #283593;
+        }
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+        .button-group button {
+            flex: 1;
+        }
+        #history {
+            margin-top: 20px;
+            border-top: 1px solid var(--border);
+            padding-top: 15px;
+        }
+        .history-item {
+            background-color: var(--card);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: var(--button-radius);
+            border-left: 3px solid var(--accent);
+        }
+        .error {
+            color: #FF5252;
+            font-size: 14px;
+            margin: 5px 0;
+            text-align: center;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1>Cipher App</h1>
+
+        <h3>Define Your Cipher Key</h3>
+        <textarea id="cipherKey" placeholder="Example: A=1,B=2,C=3,..."></textarea>
+        <button onclick="saveCipher()">Save Cipher Key</button>
+        <button onclick="resetToDefault()">Reset to Default</button>
+        <div id="cipherError" class="error"></div>
+
+        <h3>Encode/Decode</h3>
+        <textarea id="inputText" placeholder="Enter text to encode/decode"></textarea>
+        <div class="button-group">
+            <button onclick="pasteInput()">Paste</button>
+            <button onclick="encode()">Encode</button>
+            <button onclick="decode()">Decode</button>
+        </div>
+        <div class="button-group">
+            <button onclick="copyToClipboard()">Copy Result</button>
+            <button onclick="shareResult()">Share</button>
+        </div>
+        <textarea id="outputText" placeholder="Result will appear here" readonly></textarea>
+        <div id="outputError" class="error"></div>
+
+        <h3>History</h3>
+        <div id="history"></div>
+    </div>
+
+    <script>
+        let cipher = {};
+        let history = JSON.parse(localStorage.getItem('cipherHistory')) || [];
+
+        // Load cipher from localStorage
+        function loadCipher() {
+            const saved = localStorage.getItem('cipherKey');
+            if (saved) {
+                document.getElementById('cipherKey').value = saved;
+                try {
+                    saved.split(',').forEach(pair => {
+                        const [letter, num] = pair.split('=');
+                        if (letter && !isNaN(num)) {
+                            cipher[letter.toUpperCase()] = parseInt(num);
+                        } else {
+                            throw new Error("Invalid cipher format. Use 'A=1,B=2,...'");
+                        }
+                    });
+                } catch (e) {
+                    document.getElementById('cipherError').textContent = e.message;
+                    initDefaultCipher();
+                }
+            } else {
+                initDefaultCipher();
+            }
+            renderHistory();
+        }
+
+        // Default cipher: A=1, B=2, ..., Z=26
+        function initDefaultCipher() {
+            cipher = {};
+            for (let i = 1; i <= 26; i++) {
+                cipher[String.fromCharCode(64 + i)] = i;
+            }
+            document.getElementById('cipherKey').value = Object.entries(cipher)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(',');
+            localStorage.setItem('cipherKey', document.getElementById('cipherKey').value);
+            document.getElementById('cipherError').textContent = '';
+        }
+
+        // Save custom cipher to localStorage
+        function saveCipher() {
+            const keyText = document.getElementById('cipherKey').value;
+            cipher = {};
+            try {
+                keyText.split(',').forEach(pair => {
+                    const [letter, num] = pair.split('=');
+                    if (letter && !isNaN(num)) {
+                        cipher[letter.toUpperCase()] = parseInt(num);
+                    } else {
+                        throw new Error("Invalid cipher format. Use 'A=1,B=2,...'");
+                    }
+                });
+                localStorage.setItem('cipherKey', keyText);
+                document.getElementById('cipherError').textContent = '';
+                alert('Cipher saved!');
+            } catch (e) {
+                document.getElementById('cipherError').textContent = e.message;
+            }
+        }
+
+        // Reset to default cipher
+        function resetToDefault() {
+            initDefaultCipher();
+            alert('Cipher reset to default!');
+        }
+
+        // Encode: Letter -> Number -> Binary
+        function encode() {
+            const input = document.getElementById('inputText').value.toUpperCase();
+            let output = '';
+            try {
+                for (const char of input) {
+                    if (cipher[char]) {
+                        const num = cipher[char];
+                        const binary = num.toString(2).padStart(5, '0');
+                        output += `${binary} `;
+                    } else if (char !== ' ') {
+                        throw new Error(`Letter '${char}' not in cipher.`);
+                    }
+                }
+                document.getElementById('outputText').value = output.trim();
+                document.getElementById('outputError').textContent = '';
+                addToHistory(`Encode: ${input} → ${output.trim()}`);
+            } catch (e) {
+                document.getElementById('outputError').textContent = e.message;
+            }
+        }
+
+        // Decode: Binary -> Number -> Letter
+        function decode() {
+            const input = document.getElementById('inputText').value;
+            const binaries = input.split(' ');
+            let output = '';
+            try {
+                for (const bin of binaries) {
+                    if (bin) {
+                        if (!/^[01]+$/.test(bin)) {
+                            throw new Error(`Invalid binary: '${bin}'.`);
+                        }
+                        const num = parseInt(bin, 2);
+                        const letter = Object.keys(cipher).find(k => cipher[k] === num);
+                        output += letter || '?';
+                    }
+                }
+                document.getElementById('outputText').value = output;
+                document.getElementById('outputError').textContent = '';
+                addToHistory(`Decode: ${input} → ${output}`);
+            } catch (e) {
+                document.getElementById('outputError').textContent = e.message;
+            }
+        }
+
+        // Copy result to clipboard
+        function copyToClipboard() {
+            const outputText = document.getElementById('outputText');
+            outputText.select();
+            document.execCommand('copy');
+            alert('Copied to clipboard!');
+        }
+
+        // Paste from clipboard
+        function pasteInput() {
+            navigator.clipboard.readText()
+                .then(text => {
+                    document.getElementById('inputText').value = text;
+                })
+                .catch(err => {
+                    document.getElementById('outputError').textContent = 'Failed to paste.';
+                });
+        }
+
+        // Share result
+        function shareResult() {
+            const output = document.getElementById('outputText').value;
+            if (output) {
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'Cipher Result',
+                        text: output,
+                    }).catch(err => {
+                        document.getElementById('outputError').textContent = 'Failed to share.';
+                    });
+                } else {
+                    alert('Sharing not supported in your browser. Copy the result manually.');
+                }
+            } else {
+                document.getElementById('outputError').textContent = 'Nothing to share.';
+            }
+        }
+
+        // Add to history
+        function addToHistory(item) {
+            history.unshift(item);
+            if (history.length > 5) history.pop();
+            localStorage.setItem('cipherHistory', JSON.stringify(history));
+            renderHistory();
+        }
+
+        // Render history
+        function renderHistory() {
+            const historyDiv = document.getElementById('history');
+            historyDiv.innerHTML = '';
+            history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'history-item';
+                div.textContent = item;
+                historyDiv.appendChild(div);
+            });
+        }
+
+        // Initialize
+        loadCipher();
+    </script>
+</body>
+</html>
