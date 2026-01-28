@@ -95,6 +95,34 @@
             margin: 5px 0;
             text-align: center;
         }
+        .menu-button {
+            background-color: var(--border);
+            margin-bottom: 15px;
+        }
+        .cipher-menu {
+            display: none;
+            margin-top: 15px;
+            border-top: 1px solid var(--border);
+            padding-top: 15px;
+        }
+        .letter-fields {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .letter-field {
+            display: flex;
+            flex-direction: column;
+        }
+        .letter-field label {
+            font-size: 12px;
+            margin-bottom: 4px;
+            text-align: center;
+        }
+        .letter-field input {
+            min-height: auto;
+            padding: 8px;
+        }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 </head>
@@ -102,11 +130,15 @@
     <div class="container">
         <h1>Cipher App</h1>
 
-        <h3>Define Your Cipher Key</h3>
-        <textarea id="cipherKey" placeholder="Example: A=1,B=2,C=3,..."></textarea>
-        <button onclick="saveCipher()">Save Cipher Key</button>
-        <button onclick="resetToDefault()">Reset to Default</button>
-        <div id="cipherError" class="error"></div>
+        <button class="menu-button" onclick="toggleCipherMenu()">Cipher Settings</button>
+
+        <div id="cipherMenu" class="cipher-menu">
+            <h3>Customize Cipher Key</h3>
+            <div class="letter-fields" id="letterFields"></div>
+            <button onclick="saveCipher()">Save Cipher Key</button>
+            <button onclick="resetToDefault()">Reset to Default</button>
+            <div id="cipherError" class="error"></div>
+        </div>
 
         <h3>Encode/Decode</h3>
         <textarea id="inputText" placeholder="Enter text to encode/decode"></textarea>
@@ -130,27 +162,37 @@
         let cipher = {};
         let history = JSON.parse(localStorage.getItem('cipherHistory')) || [];
 
+        // Initialize letter fields
+        function initLetterFields() {
+            const container = document.getElementById('letterFields');
+            container.innerHTML = '';
+            for (let i = 1; i <= 26; i++) {
+                const letter = String.fromCharCode(64 + i);
+                const div = document.createElement('div');
+                div.className = 'letter-field';
+                div.innerHTML = `
+                    <label>${letter}</label>
+                    <input type="number" id="input-${letter}" value="${cipher[letter] || i}" min="1">
+                `;
+                container.appendChild(div);
+            }
+        }
+
         // Load cipher from localStorage
         function loadCipher() {
             const saved = localStorage.getItem('cipherKey');
             if (saved) {
-                document.getElementById('cipherKey').value = saved;
                 try {
-                    saved.split(',').forEach(pair => {
-                        const [letter, num] = pair.split('=');
-                        if (letter && !isNaN(num)) {
-                            cipher[letter.toUpperCase()] = parseInt(num);
-                        } else {
-                            throw new Error("Invalid cipher format. Use 'A=1,B=2,...'");
-                        }
-                    });
+                    const savedCipher = JSON.parse(saved);
+                    cipher = savedCipher;
                 } catch (e) {
-                    document.getElementById('cipherError').textContent = e.message;
+                    document.getElementById('cipherError').textContent = 'Error loading cipher. Using default.';
                     initDefaultCipher();
                 }
             } else {
                 initDefaultCipher();
             }
+            initLetterFields();
             renderHistory();
         }
 
@@ -160,27 +202,28 @@
             for (let i = 1; i <= 26; i++) {
                 cipher[String.fromCharCode(64 + i)] = i;
             }
-            document.getElementById('cipherKey').value = Object.entries(cipher)
-                .map(([k, v]) => `${k}=${v}`)
-                .join(',');
-            localStorage.setItem('cipherKey', document.getElementById('cipherKey').value);
+            localStorage.setItem('cipherKey', JSON.stringify(cipher));
             document.getElementById('cipherError').textContent = '';
+        }
+
+        // Toggle cipher menu
+        function toggleCipherMenu() {
+            const menu = document.getElementById('cipherMenu');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
         }
 
         // Save custom cipher to localStorage
         function saveCipher() {
-            const keyText = document.getElementById('cipherKey').value;
-            cipher = {};
             try {
-                keyText.split(',').forEach(pair => {
-                    const [letter, num] = pair.split('=');
-                    if (letter && !isNaN(num)) {
-                        cipher[letter.toUpperCase()] = parseInt(num);
-                    } else {
-                        throw new Error("Invalid cipher format. Use 'A=1,B=2,...'");
+                for (let i = 1; i <= 26; i++) {
+                    const letter = String.fromCharCode(64 + i);
+                    const value = document.getElementById(`input-${letter}`).value;
+                    if (!value || isNaN(value)) {
+                        throw new Error(`Invalid value for ${letter}.`);
                     }
-                });
-                localStorage.setItem('cipherKey', keyText);
+                    cipher[letter] = parseInt(value);
+                }
+                localStorage.setItem('cipherKey', JSON.stringify(cipher));
                 document.getElementById('cipherError').textContent = '';
                 alert('Cipher saved!');
             } catch (e) {
@@ -191,6 +234,7 @@
         // Reset to default cipher
         function resetToDefault() {
             initDefaultCipher();
+            initLetterFields();
             alert('Cipher reset to default!');
         }
 
